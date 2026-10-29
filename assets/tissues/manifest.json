@@ -1,0 +1,83 @@
+[
+  {
+    "id": "skin",
+    "name": "Skóra",
+    "difficulty": "łatwa",
+    "level": 1,
+    "description": "Naskórek na górze, skóra właściwa pod spodem: warstwy podpowiadają, gdzie jest góra, a gdzie dół.",
+    "source": {
+      "type": "image",
+      "fragment": "assets/tissues/skin_fragment.jpg",
+      "thumbnail": "assets/tissues/skin_thumb.jpg",
+      "region": [
+        0.7464246568192495,
+        0.10275391835650402,
+        0.015938984289367922,
+        0.04326573983883822
+      ]
+    },
+    "slide": {
+      "width": 153272,
+      "height": 56465,
+      "mpp": 0.2456,
+      "magnification": "40×",
+      "fragmentSize": 2443
+    },
+    "credit": "TCGA, NCI Genomic Data Commons (TCGA-FS-A1ZN-01Z-00-DX7)",
+    "license": "TCGA open access"
+  },
+  {
+    "id": "intestine",
+    "name": "Jelito grube",
+    "difficulty": "średnia",
+    "level": 2,
+    "description": "Prawidłowa błona śluzowa jelita grubego. Krypty z komórkami kubkowymi pomagają, ale wyglądają bardzo podobnie. Ciemne pasy to fałdy skrawka powstałe przy cięciu.",
+    "source": {
+      "type": "image",
+      "fragment": "assets/tissues/intestine_fragment.jpg",
+      "thumbnail": "assets/tissues/intestine_thumb.jpg",
+      "region": [
+        0.6393223652060597,
+        0.6802053054704481,
+        0.05818537221045773,
+        0.046769843140335714
+      ]
+    },
+    "slide": {
+      "width": 30695,
+      "height": 38187,
+      "mpp": 0.252,
+      "magnification": "40×",
+      "fragmentSize": 1786
+    },
+    "credit": "TCGA, NCI Genomic Data Commons (TCGA-AD-5900-01Z-00-DX1)",
+    "license": "TCGA open access"
+  },
+  {
+    "id": "lymph_node",
+    "name": "Węzeł chłonny (chłoniak)",
+    "difficulty": "bardzo trudna",
+    "level": 3,
+    "description": "Węzeł chłonny wypełniony komórkami chłoniaka rozlanego z dużych komórek B. Tysiące podobnych komórek i prawie żadnych punktów orientacyjnych.",
+    "source": {
+      "type": "image",
+      "fragment": "assets/tissues/lymph_node_fragment.jpg",
+      "thumbnail": "assets/tissues/lymph_node_thumb.jpg",
+      "region": [
+        0.5522230361771667,
+        0.35125448028673834,
+        0.025160599571734475,
+        0.10849887613146224
+      ]
+    },
+    "slide": {
+      "width": 70984,
+      "height": 16461,
+      "mpp": 0.252,
+      "magnification": "40×",
+      "fragmentSize": 1786
+    },
+    "credit": "TCGA, NCI Genomic Data Commons (TCGA-FM-8000-01Z-00-DX1)",
+    "license": "TCGA open access"
+  }
+]

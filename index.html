@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HistoPuzzle | SKN Biologów Cyfrowych UŁ</title>
+  <meta name="description" content="HistoPuzzle – gra wystawowa SKN Biologów Cyfrowych UŁ: ułóż puzzle z preparatu histologicznego i zobacz, jak komputer porównuje kafelki i dlaczego preparaty analizuje się w kafelkach.">
+  <link rel="icon" type="image/jpeg" href="assets/img/logo_bc_icon.jpg">
+
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+  <!-- NAGŁÓWEK -->
+  <header class="sticky top-0 z-40 w-full backdrop-blur-md bg-[#4043A0]/95 border-b border-[#4043A0] px-4 py-2.5 shadow-lg">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2.5">
+      <a href="https://biologiacyfrowa.github.io/website_BC/" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 group" title="Oficjalna strona SKN Biologów Cyfrowych">
+        <img src="assets/img/logo_bc_icon.jpg" alt="Logo SKN Biologów Cyfrowych" class="w-10 h-10 rounded-xl border-2 border-[#DFEFF6]/30 bg-white p-0.5 object-contain group-hover:border-[#C4455C] transition">
+        <div>
+          <div class="bc-logo leading-none text-2xl text-[#DFEFF6] group-hover:text-[#C4455C] transition-colors">HistoPuzzle</div>
+          <p class="text-[11px] text-[#DFEFF6]/80">SKN Biologów Cyfrowych · Uniwersytet Łódzki</p>
+        </div>
+      </a>
+      <div class="flex items-center gap-2 w-full md:w-auto">
+        <nav id="stepper" class="stepper flex-1 md:flex-initial" aria-label="Etapy gry">
+          <button data-step="warmup"><span>0</span><em>Rozgrzewka</em></button>
+          <button data-step="puzzle"><span>1</span><em>Ułóż tkankę</em></button>
+          <button data-step="vision"><span>2</span><em>Oczami komputera</em></button>
+          <button data-step="solver"><span>3</span><em>Komputer układa</em></button>
+          <button data-step="scale"><span>4</span><em>Skala</em></button>
+        </nav>
+        <button id="btn-restart" class="btn-ghost shrink-0" title="Zacznij od nowa dla kolejnej osoby">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span class="hidden sm:inline">Od nowa</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+
+    <!-- EKRAN STARTOWY -->
+    <section id="screen-intro" class="screen space-y-6">
+      <div class="glass-panel p-6 sm:p-10 text-center space-y-5">
+        <div class="pill mx-auto"><i data-lucide="microscope" class="w-3.5 h-3.5"></i> Patologia cyfrowa</div>
+        <h1 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">Czy ułożysz puzzle z tkanki?</h1>
+        <p class="max-w-2xl mx-auto text-base sm:text-lg text-[#DFEFF6]/90 leading-relaxed">
+          Patolog ogląda pod mikroskopem cienkie skrawki tkanek. Dziś skanuje się je do ogromnych zdjęć,
+          które analizuje komputer, <strong>kafelek po kafelku</strong>. Sprawdź, jak trudno złożyć taki obraz z powrotem
+          i jak radzi sobie z tym algorytm.
+        </p>
+        <button id="btn-start" class="btn-coral text-lg px-8 py-3.5">
+          <i data-lucide="play" class="w-5 h-5"></i> Zaczynamy
+        </button>
+      </div>
+      <details class="glass-panel p-5 group">
+        <summary class="cursor-pointer font-bold text-white flex items-center gap-2">
+          <i data-lucide="book-open" class="w-4 h-4 text-[#C4455C]"></i> Co zobaczysz na zdjęciach? Barwienie H&amp;E
+        </summary>
+        <div class="mt-3 grid sm:grid-cols-3 gap-4 text-sm leading-relaxed text-[#DFEFF6]/90">
+          <p><span class="dot" style="background:#4b2f8f"></span><strong>Hematoksylina</strong> barwi na fioletowo-granatowo jądra komórkowe (wiąże się z DNA).</p>
+          <p><span class="dot" style="background:#e48fb3"></span><strong>Eozyna</strong> barwi na różowo cytoplazmę i włókna kolagenu (wiąże się z białkami).</p>
+          <p><span class="dot" style="background:#f6eef3"></span><strong>Białe plamy</strong> to światła naczyń, gruczołów albo puste szkło.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- AKT 0: ROZGRZEWKA -->
+    <section id="screen-warmup" class="screen hidden">
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+        <div class="board-wrap"><div id="board-warmup"></div></div>
+        <aside class="glass-panel p-5 space-y-4">
+          <div class="pill"><i data-lucide="flame" class="w-3.5 h-3.5"></i> Akt 0 · Rozgrzewka</div>
+          <h2 class="text-xl font-extrabold text-white">Najpierw coś łatwego</h2>
+          <p class="text-sm text-[#DFEFF6]/90 leading-relaxed">Ułóż logo naszego koła. <strong>Tapnij dwa kafelki</strong>, żeby zamienić je miejscami, albo przeciągnij kafelek na inne pole.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="stat"><span>Czas</span><strong id="warmup-time">0:00</strong></div>
+            <div class="stat"><span>Ruchy</span><strong id="warmup-moves">0</strong></div>
+          </div>
+          <div id="warmup-done" class="success-box hidden">
+            <strong>Brawo!</strong> Udało się w <span id="warmup-result"></span>. Układanie jest łatwe… prawda?
+          </div>
+          <button id="btn-warmup-next" class="btn-coral w-full"><i data-lucide="arrow-right" class="w-4 h-4"></i> Teraz prawdziwa tkanka</button>
+        </aside>
+      </div>
+    </section>
+
+    <!-- AKT 1A: WYBÓR TKANKI -->
+    <section id="screen-choose" class="screen hidden space-y-5">
+      <div>
+        <div class="pill"><i data-lucide="layers" class="w-3.5 h-3.5"></i> Akt 1 · Ułóż tkankę</div>
+        <h2 class="text-2xl font-extrabold text-white mt-2">Wybierz preparat</h2>
+        <p class="text-sm text-[#DFEFF6]/80">Kafelki są kwadratowe, tak samo jak w prawdziwej analizie, więc kształt nic nie podpowie.</p>
+      </div>
+      <div id="tissue-cards" class="grid sm:grid-cols-3 gap-4"></div>
+      <p id="tissue-error" class="hidden error-box"></p>
+    </section>
+
+    <!-- AKT 1B: UKŁADANIE -->
+    <section id="screen-puzzle" class="screen hidden">
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+        <div class="board-wrap"><div id="board-tissue"></div></div>
+        <aside class="glass-panel p-5 space-y-4">
+          <div class="pill"><i data-lucide="layers" class="w-3.5 h-3.5"></i> Akt 1 · Ułóż tkankę</div>
+          <div>
+            <h2 id="puzzle-title" class="text-xl font-extrabold text-white"></h2>
+            <p id="puzzle-desc" class="text-sm text-[#DFEFF6]/80 mt-1 leading-relaxed"></p>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="stat"><span>Czas</span><strong id="puzzle-time">0:00</strong></div>
+            <div class="stat"><span>Ruchy</span><strong id="puzzle-moves">0</strong></div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="toggle-correct"><span>Tryb łatwy: pokaż poprawnie leżące kafelki</span></label>
+          <label id="helper-row" class="toggle hidden"><input type="checkbox" id="toggle-helper"><span>Pomocnik komputerowy</span></label>
+          <p id="helper-info" class="hidden info-box">Tapnij kafelek, a pomocnik oznaczy strzałkami kafelki, które według niego pasują <strong>→ z prawej, ← z lewej, ↓ pod spodem, ↑ nad nim</strong>. Liczba to pewność komputera.</p>
+          <div id="puzzle-done" class="success-box hidden"><strong>Niesamowite!</strong> Ułożone w <span id="puzzle-result"></span>. Mało kto daje radę!</div>
+          <button id="btn-ask-computer" class="btn-coral w-full hidden"><i data-lucide="cpu" class="w-4 h-4"></i> Poproś komputer o pomoc</button>
+          <button id="btn-puzzle-skip" class="btn-ghost w-full justify-center"><i data-lucide="skip-forward" class="w-4 h-4"></i> Jak to widzi komputer?</button>
+          <p class="text-[11px] text-[#DFEFF6]/50" id="puzzle-credit"></p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- AKT 2: OCZAMI KOMPUTERA -->
+    <section id="screen-vision" class="screen hidden space-y-6">
+      <div>
+        <div class="pill"><i data-lucide="scan-eye" class="w-3.5 h-3.5"></i> Akt 2 · Oczami komputera</div>
+        <h2 class="text-2xl font-extrabold text-white mt-2">Komputer nie widzi komórek, tylko liczby</h2>
+        <p class="text-sm text-[#DFEFF6]/80 max-w-3xl">Zobacz, jak zamienia obraz na liczby i jak porównuje krawędzie kafelków.</p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="glass-panel p-5 space-y-3">
+          <h3 class="card-title"><span class="num">1</span> Piksele</h3>
+          <p class="text-sm text-[#DFEFF6]/85">Dotknij kafelka. Każdy piksel to trzy liczby: ile w nim czerwieni, zieleni i błękitu (0–255).</p>
+          <div class="flex flex-wrap gap-4 items-start">
+            <canvas id="pixel-tile" class="pixel-tile" width="240" height="240"></canvas>
+            <div class="space-y-2">
+              <canvas id="pixel-zoom" class="pixel-zoom" width="165" height="165"></canvas>
+              <div class="font-mono text-sm space-y-0.5" id="pixel-values"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-panel p-5 space-y-3">
+          <h3 class="card-title"><span class="num">2</span> Rozdzielanie barwników</h3>
+          <p class="text-sm text-[#DFEFF6]/85">Z kolorów piksela da się policzyć, ile w nim hematoksyliny, a ile eozyny (dekonwolucja kolorów). Tak komputer „widzi” jądra osobno od cytoplazmy.</p>
+          <div class="grid grid-cols-3 gap-2 text-center text-xs">
+            <figure><canvas id="stain-orig" class="stain-canvas"></canvas><figcaption>Obraz H&amp;E</figcaption></figure>
+            <figure><canvas id="stain-h" class="stain-canvas"></canvas><figcaption>Tylko hematoksylina<br>(jądra)</figcaption></figure>
+            <figure><canvas id="stain-e" class="stain-canvas"></canvas><figcaption>Tylko eozyna<br>(cytoplazma, kolagen)</figcaption></figure>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel p-5 space-y-4">
+        <h3 class="card-title"><span class="num">3</span> Porównywanie krawędzi</h3>
+        <p class="text-sm text-[#DFEFF6]/85 max-w-3xl">Komputer bierze kilka pikseli z brzegu kafelka, przewiduje, jak obraz powinien wyglądać tuż za krawędzią, i sprawdza, który kafelek najlepiej pasuje do tej przepowiedni. Wybierz kafelek z Twojej planszy:</p>
+        <div class="grid md:grid-cols-[minmax(0,320px)_minmax(0,1fr)] gap-6 items-start">
+          <div class="space-y-3">
+            <div id="mini-board" class="mini-board"></div>
+            <div class="flex gap-1.5 flex-wrap" id="direction-buttons">
+              <button data-dir="right" class="chip is-active">Sąsiad z prawej →</button>
+              <button data-dir="down" class="chip">Sąsiad pod spodem ↓</button>
+              <button data-dir="left" class="chip">← z lewej</button>
+              <button data-dir="up" class="chip">↑ nad nim</button>
+            </div>
+            <p class="text-xs text-[#DFEFF6]/60">Kolor na planszy: jak bardzo każdy kafelek pasuje według komputera (czerwony = najlepiej).</p>
+          </div>
+          <div class="space-y-2">
+            <div id="candidate-list" class="space-y-2"></div>
+            <p id="candidate-truth" class="info-box"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 justify-end">
+        <button id="btn-back-helper" class="btn-ghost justify-center"><i data-lucide="arrow-left" class="w-4 h-4"></i> Wróć do układania z pomocnikiem</button>
+        <button id="btn-go-solver" class="btn-coral justify-center"><i data-lucide="cpu" class="w-4 h-4"></i> Niech komputer ułoży całość</button>
+      </div>
+    </section>
+
+    <!-- AKT 3: KOMPUTER UKŁADA -->
+    <section id="screen-solver" class="screen hidden">
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+        <div class="board-wrap"><div id="board-solver"></div></div>
+        <aside class="glass-panel p-5 space-y-4">
+          <div class="pill"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> Akt 3 · Komputer układa</div>
+          <h2 class="text-xl font-extrabold text-white">Człowiek kontra algorytm</h2>
+          <div class="versus">
+            <div><span>Ty</span><strong id="vs-human-time">–</strong><em id="vs-human-moves"></em></div>
+            <div><span>Komputer</span><strong id="vs-cpu-time">–</strong><em id="vs-cpu-comparisons"></em></div>
+          </div>
+          <p id="solver-status" class="text-sm text-[#DFEFF6]/90 leading-relaxed"></p>
+          <div id="solver-result" class="hidden space-y-3">
+            <div class="stat"><span>Kafelki na właściwym miejscu</span><strong id="solver-correct"></strong></div>
+            <p id="solver-explain" class="info-box"></p>
+          </div>
+          <button id="btn-replay-solver" class="btn-ghost w-full justify-center"><i data-lucide="repeat" class="w-4 h-4"></i> Pokaż jeszcze raz</button>
+          <button id="btn-go-scale" class="btn-coral w-full"><i data-lucide="zoom-out" class="w-4 h-4"></i> Jak duży jest cały preparat?</button>
+        </aside>
+      </div>
+    </section>
+
+    <!-- AKT 4: SKALA -->
+    <section id="screen-scale" class="screen hidden space-y-6">
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+        <div class="space-y-2">
+          <div class="slide-wrap">
+            <canvas id="slide-canvas"></canvas>
+            <div class="slide-readout">Pole widzenia: <strong id="field-width">–</strong></div>
+            <div id="heat-legend" class="heat-legend hidden">
+              <span>tkanka prawidłowa</span><i></i><span>podejrzana zmiana</span>
+              <em>ilustracja poglądowa, nie diagnoza</em>
+            </div>
+          </div>
+        </div>
+        <aside class="glass-panel p-5 space-y-4">
+          <div class="pill"><i data-lucide="zoom-out" class="w-3.5 h-3.5"></i> Akt 4 · Skala</div>
+          <h2 class="text-xl font-extrabold text-white">Twoje puzzle to kropka na szkiełku</h2>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="stat"><span>Twoja plansza</span><strong id="scale-player-tiles"></strong></div>
+            <div class="stat"><span>Cały preparat</span><strong id="scale-slide-tiles"></strong></div>
+            <div class="stat"><span>Rozmiar obrazu</span><strong id="scale-pixels"></strong></div>
+            <div class="stat"><span>Bez kompresji</span><strong id="scale-gb"></strong></div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <button id="btn-zoom-replay" class="btn-ghost justify-center"><i data-lucide="repeat" class="w-4 h-4"></i> Odjedź jeszcze raz</button>
+            <button id="btn-show-tiles" class="btn-purple justify-center"><i data-lucide="grid-3x3" class="w-4 h-4"></i> Pokaż podział na kafelki</button>
+            <button id="btn-show-heatmap" class="btn-coral justify-center"><i data-lucide="flame" class="w-4 h-4"></i> Pokaż mapę z modelu AI</button>
+          </div>
+          <p id="scale-explain" class="info-box"></p>
+        </aside>
+      </div>
+
+      <div class="glass-panel p-5 sm:p-6 grid md:grid-cols-[minmax(0,1fr)_auto] gap-6 items-center">
+        <div class="space-y-2">
+          <h3 class="text-lg font-extrabold text-white">Dlaczego komputer dzieli preparat na kafelki?</h3>
+          <ul class="text-sm text-[#DFEFF6]/90 space-y-1.5 leading-relaxed list-disc pl-5">
+            <li>Cały skan ma miliardy pikseli i nie mieści się w pamięci karty graficznej.</li>
+            <li>Sieci neuronowe uczy się na małych obrazkach, zwykle 224–512 pikseli.</li>
+            <li>Model ocenia każdy kafelek osobno, a wyniki składa z powrotem w mapę całego preparatu. Nie musi układać puzzli, bo zna położenie każdego kafelka.</li>
+            <li>Patolog dostaje podpowiedź, gdzie warto spojrzeć najpierw. Decyzję zawsze podejmuje człowiek.</li>
+          </ul>
+        </div>
+        <div class="text-center space-y-2">
+          <div id="qr-code" class="qr-box"></div>
+          <p class="text-xs text-[#DFEFF6]/70">Dołącz do SKN Biologów Cyfrowych</p>
+          <button id="btn-restart-end" class="btn-coral"><i data-lucide="rotate-ccw" class="w-4 h-4"></i> Zagraj od nowa</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-[11px] text-[#DFEFF6]/50 py-4 px-4">
+    SKN Biologów Cyfrowych UŁ · Preparaty: The Cancer Genome Atlas (TCGA), NCI Genomic Data Commons · Algorytm dopasowania krawędzi: Pomeranz, Shemesh &amp; Ben-Shahar (2011) · Dekonwolucja H&amp;E: Ruifrok &amp; Johnston (2001)
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

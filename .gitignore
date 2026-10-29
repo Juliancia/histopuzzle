@@ -1,0 +1,23 @@
+# Pliki systemowe i edytory
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python (skrypty w tools/)
+__pycache__/
+*.pyc
+.venv/
+
+# Pełne skany preparatów (WSI) – do repo trafiają tylko wycinki i miniatury JPG
+*.svs
+*.ndpi
+*.mrxs
+*.tif
+*.tiff
+
+# Notatki robocze
+TO_DO.md
+todo.md
