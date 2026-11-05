@@ -5,7 +5,7 @@
  *   0. Rozgrzewka – łatwe puzzle z logo koła (punkt odniesienia).
  *   1. Ułóż tkankę – puzzle z preparatu H&E (człowiek).
  *   2. Oczami komputera – piksele, rozdzielanie barwników, porównywanie krawędzi.
- *   3. Komputer układa – animacja solvera i porównanie z graczem.
+ *   3. Komputer układa – animacja solvera (przymierzanie i odrzucanie kandydatów) i porównanie z graczem.
  *   4. Skala – odjazd do całego preparatu, podział na kafelki i poglądowa mapa AI.
  */
 
@@ -16,6 +16,7 @@ import {
 } from './vision.js';
 import { solvePuzzle } from './solver.js';
 import { SlideExplorer } from './zoom.js';
+import { launchConfetti } from './confetti.js';
 
 /** Bok obrazu roboczego w pikselach (każda plansza jest cięta z kwadratu tej wielkości). */
 const WORK_SIZE = 600;
@@ -24,6 +25,14 @@ const HELP_AFTER_SECONDS = 90;
 /** Adres strony koła (kod QR na końcu gry). */
 const CLUB_URL = 'https://biologiacyfrowa.github.io/website_BC/';
 const DIRECTION_ARROWS = { right: '→', left: '←', down: '↓', up: '↑' };
+/** Promień fragmentu pokazywanego w macierzach R, G, B (2 → macierz 5×5). */
+const MATRIX_RADIUS = 2;
+/** Czasy animacji solvera (ms, przy tempie „Wolno”). */
+const SOLVER_TIMING = { seed: 1400, trial: 600, verdict: 500, place: 250 };
+/** Ile pierwszych kroków solvera pokazujemy w pełnym tempie; kolejne są szybsze. */
+const SOLVER_SLOW_STEPS = 4;
+/** Mnożnik czasu dla kroków po SOLVER_SLOW_STEPS (mniej = szybciej). */
+const SOLVER_LATER_FACTOR = 0.35;
 
 const $ = (id) => document.getElementById(id);
 
@@ -46,6 +55,9 @@ const state = {
   visionDirection: 'right',
   solverBoard: null,
   solverRun: 0,
+  solverSpeed: 1,
+  solverStepFactor: 1,
+  solverSkip: false,
   explorer: null,
 };
 
@@ -101,6 +113,46 @@ function startTimer(tick) {
   state.timer = setInterval(tick, 500);
 }
 
+/**
+ * Rysuje miniaturę ułożonego obrazka pod planszą i ustawia jej widoczność według przełącznika.
+ *
+ * @param {string} name - Sufiks identyfikatorów: `preview-<name>` i `toggle-preview-<name>`.
+ * @param {HTMLCanvasElement} image - Poprawnie ułożony obraz.
+ */
+function drawPreview(name, image) {
+  const figure = $(`preview-${name}`);
+  const canvas = figure.querySelector('canvas');
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+  figure.classList.toggle('hidden', !$(`toggle-preview-${name}`).checked);
+}
+
+/** Usuwa wszystkie widoczne komunikaty z gratulacjami. */
+function clearCelebrations() {
+  document.querySelectorAll('.celebration').forEach((el) => el.remove());
+}
+
+/**
+ * Świętuje ułożenie obrazka: konfetti na cały ekran i komunikat nad planszą.
+ *
+ * Komunikat znika sam po kilku sekundach albo po dotknięciu.
+ *
+ * @param {HTMLElement} board - Kontener planszy (komunikat trafia do jej `.board-wrap`).
+ */
+function celebrate(board) {
+  clearCelebrations();
+  launchConfetti();
+  const banner = document.createElement('div');
+  banner.className = 'celebration';
+  banner.innerHTML = '<strong>🎉 Gratulacje!</strong><span>Udało się ułożyć obrazek!</span>';
+  const dismiss = () => {
+    banner.classList.add('is-leaving');
+    setTimeout(() => banner.remove(), 500);
+  };
+  banner.addEventListener('click', dismiss);
+  setTimeout(dismiss, 4500);
+  board.closest('.board-wrap').appendChild(banner);
+}
+
 /* ------------------------------------------------------------------ */
 /* Akt 0: rozgrzewka                                                   */
 /* ------------------------------------------------------------------ */
@@ -110,6 +162,8 @@ async function startWarmup() {
   showScreen('warmup');
   const logo = await loadImage('assets/img/logo_puzzle.jpg');
   const image = toSquareCanvas(logo, WORK_SIZE);
+  drawPreview('warmup', image);
+  clearCelebrations();
   const warmup = { moves: 0, startedAt: performance.now(), done: false };
   state.warmup = warmup;
   state.warmupBoard?.destroy();
@@ -127,6 +181,7 @@ async function startWarmup() {
       clearInterval(state.timer);
       $('warmup-result').textContent = `${formatTime(performance.now() - warmup.startedAt)} (${warmup.moves} ruchów)`;
       $('warmup-done').classList.remove('hidden');
+      celebrate($('board-warmup'));
     },
   });
   $('warmup-moves').textContent = '0';
@@ -212,10 +267,13 @@ async function startTissue(entry) {
       $('puzzle-done').classList.remove('hidden');
       $('btn-ask-computer').classList.remove('hidden');
       $('btn-ask-computer').lastChild.textContent = ' Zobacz, jak robi to komputer';
+      celebrate($('board-tissue'));
     },
     onSelect: updateHelperHints,
   });
   state.board.setShowCorrect($('toggle-correct').checked);
+  drawPreview('tissue', state.loaded.fragment);
+  clearCelebrations();
   $('puzzle-title').textContent = `${entry.name} · ${state.n}×${state.n} kafelków`;
   $('puzzle-desc').textContent = entry.description;
   $('puzzle-credit').textContent = `Źródło obrazu: ${entry.credit}${entry.license !== '—' ? ` (${entry.license})` : ''}`;
@@ -333,9 +391,13 @@ function renderPixelPanel(source, px, py) {
     zctx.beginPath(); zctx.moveTo(i * cell, 0); zctx.lineTo(i * cell, zoom.height); zctx.stroke();
     zctx.beginPath(); zctx.moveTo(0, i * cell); zctx.lineTo(zoom.width, i * cell); zctx.stroke();
   }
-  zctx.strokeStyle = '#facc15';
+  zctx.strokeStyle = '#ffffff';
   zctx.lineWidth = 2;
+  zctx.strokeRect((radius - MATRIX_RADIUS) * cell, (radius - MATRIX_RADIUS) * cell,
+    (2 * MATRIX_RADIUS + 1) * cell, (2 * MATRIX_RADIUS + 1) * cell);
+  zctx.strokeStyle = '#facc15';
   zctx.strokeRect(radius * cell, radius * cell, cell, cell);
+  renderChannelMatrices(source, px, py);
 
   const [r, g, b] = source.getContext('2d').getImageData(px, py, 1, 1).data;
   const { h, e } = stainConcentrations(r, g, b);
@@ -350,6 +412,44 @@ function renderPixelPanel(source, px, py) {
     const y = Math.floor((event.clientY - rect.top) / rect.height * source.height);
     renderPixelPanel(source, Math.min(source.width - 1, Math.max(0, x)), Math.min(source.height - 1, Math.max(0, y)));
   };
+}
+
+/**
+ * Rozkłada fragment obrazu wokół wskazanego piksela na trzy macierze liczb: R, G i B.
+ *
+ * Każda komórka ma kolor swojego kanału o jasności równej wartości (0–255), a wskazany
+ * piksel jest obramowany na żółto, tak jak na powiększeniu.
+ *
+ * @param {HTMLCanvasElement} source - Kafelek w rozdzielczości roboczej.
+ * @param {number} px - Środek fragmentu (oś X, współrzędne kafelka).
+ * @param {number} py - Środek fragmentu (oś Y, współrzędne kafelka).
+ */
+function renderChannelMatrices(source, px, py) {
+  const size = 2 * MATRIX_RADIUS + 1;
+  // Poza brzegiem kafelka getImageData zwraca piksele przezroczyste (alfa = 0) – pokazujemy je jako puste.
+  const data = source.getContext('2d').getImageData(px - MATRIX_RADIUS, py - MATRIX_RADIUS, size, size).data;
+  const channels = [
+    { name: 'R', label: 'czerwony', color: '#f87171', paint: (v) => `rgb(${v},0,0)`, light: () => false },
+    { name: 'G', label: 'zielony', color: '#4ade80', paint: (v) => `rgb(0,${v},0)`, light: (v) => v > 150 },
+    { name: 'B', label: 'niebieski', color: '#60a5fa', paint: (v) => `rgb(0,0,${v})`, light: () => false },
+  ];
+  $('rgb-matrices').innerHTML = channels.map((ch, c) => {
+    const cells = [];
+    for (let i = 0; i < size * size; i++) {
+      const center = i === Math.floor(size * size / 2) ? ' is-center' : '';
+      if (data[i * 4 + 3] === 0) {
+        cells.push(`<span class="${center}"></span>`);
+        continue;
+      }
+      const v = data[i * 4 + c];
+      const text = ch.light(v) ? '#1B1D3A' : '#ffffff';
+      cells.push(`<span class="${center}" style="background:${ch.paint(v)};color:${text}">${v}</span>`);
+    }
+    return `<figure class="channel-matrix">
+      <figcaption style="color:${ch.color}">${ch.name} · ${ch.label}</figcaption>
+      <div class="channel-grid" style="--size:${size}">${cells.join('')}</div>
+    </figure>`;
+  }).join('');
 }
 
 /**
@@ -380,6 +480,7 @@ function renderMiniBoard() {
     btn.style.backgroundSize = `${state.n * 100}% ${state.n * 100}%`;
     btn.style.backgroundPosition = `${(tile % state.n) * pct}% ${Math.floor(tile / state.n) * pct}%`;
     btn.setAttribute('aria-label', `Kafelek ${tile + 1}`);
+    btn.innerHTML = '<span class="mini-badge"></span>';
     btn.addEventListener('click', () => selectVisionTile(tile));
     mini.appendChild(btn);
   }
@@ -438,22 +539,32 @@ function pairCanvas(tile, other, dir) {
   return canvas;
 }
 
-/** Odświeża mapę cieplną na miniaturze planszy i listę najlepszych kandydatów. */
+/** Ilu najlepszych kandydatów pokazujemy na liście i z procentem na miniaturze planszy. */
+const SHOWN_CANDIDATES = 4;
+
+/**
+ * Odświeża mapę dopasowania na miniaturze planszy (kolor + procent na najlepszych kandydatach)
+ * i listę najlepszych kandydatów.
+ */
 function renderEdgePanel() {
   const { visionTile: tile, visionDirection: dir } = state;
+  const ranking = rankNeighbours(state.compat, tile, dir);
+  const truth = trueNeighbour(tile, dir);
+  const top = new Map(ranking.slice(0, SHOWN_CANDIDATES).map((cand, i) => [cand.tile, i + 1]));
   document.querySelectorAll('#mini-board button').forEach((btn) => {
     const other = Number(btn.dataset.tile);
     btn.classList.toggle('is-selected', other === tile);
     const score = other === tile ? 0 : neighbourScore(state.compat, tile, other, dir);
-    btn.style.setProperty('--heat', `rgba(196, 69, 92, ${(score * 0.8).toFixed(2)})`);
+    btn.style.setProperty('--heat', `rgba(99, 102, 241, ${(score * 0.75).toFixed(2)})`);
+    const place = top.get(other);
+    btn.classList.toggle('is-candidate', place !== undefined);
+    btn.querySelector('.mini-badge').textContent = place !== undefined ? `${Math.round(score * 100)}%` : '';
   });
   document.querySelectorAll('#direction-buttons .chip').forEach((chip) => chip.classList.toggle('is-active', chip.dataset.dir === dir));
 
-  const ranking = rankNeighbours(state.compat, tile, dir);
-  const truth = trueNeighbour(tile, dir);
   const list = $('candidate-list');
   list.innerHTML = '';
-  ranking.slice(0, 4).forEach((cand, i) => {
+  ranking.slice(0, SHOWN_CANDIDATES).forEach((cand, i) => {
     const row = document.createElement('div');
     row.className = `candidate${cand.tile === truth ? ' is-true' : ''}`;
     const pct = Math.round(cand.score * 100);
@@ -483,11 +594,109 @@ function renderEdgePanel() {
 /* Akt 3: komputer układa                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Czeka podany czas, skrócony zgodnie z tempem animacji i numerem kroku (od razu przy pomijaniu).
+ *
+ * @param {number} ms - Czas przy tempie „Wolno”.
+ * @returns {Promise<void>} Obietnica spełniona po odczekaniu.
+ */
+function solverPause(ms) {
+  if (state.solverSkip) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms * state.solverStepFactor / state.solverSpeed));
+}
+
+/**
+ * Opisuje pole planszy po ludzku (wiersz i kolumna liczone od 1).
+ *
+ * @param {number} slot - Indeks pola.
+ * @returns {string} Np. „wiersz 2, kolumna 3”.
+ */
+function describeSlot(slot) {
+  return `wiersz ${Math.floor(slot / state.n) + 1}, kolumna ${(slot % state.n) + 1}`;
+}
+
+/**
+ * Dodaje do panelu kroku wiersz z „przymierzanym” kandydatem.
+ *
+ * @param {{tile: number, fit: number}} cand - Kandydat z wyniku solvera.
+ * @returns {{row: HTMLElement, verdict: (accepted: boolean, note?: string) => void}}
+ *   Wiersz oraz funkcja oznaczająca go jako zaakceptowany lub odrzucony.
+ */
+function addTrialRow(cand) {
+  const pct = Math.round(cand.fit * 100);
+  const row = document.createElement('div');
+  row.className = 'trial-row';
+  row.appendChild(tileCanvas(cand.tile));
+  const middle = document.createElement('div');
+  middle.innerHTML = `<div class="text-[#DFEFF6]/80">Kandydat: kafelek ${cand.tile + 1}<span class="note"></span></div>
+    <div class="bar"><i style="width:0%"></i></div>`;
+  row.appendChild(middle);
+  const value = document.createElement('strong');
+  value.textContent = `${pct}%`;
+  row.appendChild(value);
+  $('solver-step-list').appendChild(row);
+  requestAnimationFrame(() => { middle.querySelector('.bar i').style.width = `${pct}%`; });
+  return {
+    row,
+    verdict(accepted, note = '') {
+      row.classList.add(accepted ? 'is-accepted' : 'is-rejected');
+      value.textContent = `${pct}% ${accepted ? '✓' : '✗'}`;
+      middle.querySelector('.note').textContent = note ? ` · ${note}` : '';
+    },
+  };
+}
+
+/**
+ * Pokazuje jeden krok solvera: przymierzanie kandydatów na wolne pole, odrzucanie słabszych
+ * i akceptację zwycięzcy.
+ *
+ * @param {{tile: number, slot: number, candidates: object[]}} step - Krok z wyniku solvePuzzle.
+ * @param {number} index - Numer kroku (od 0).
+ * @param {number} total - Liczba wszystkich kroków.
+ * @param {() => boolean} alive - Zwraca false, gdy animację przerwano.
+ */
+async function animateSolverStep(step, index, total, alive) {
+  const board = state.solverBoard;
+  const list = $('solver-step-list');
+  list.innerHTML = '';
+  if (step.candidates.length === 0) {
+    $('solver-step-title').textContent = `Krok 1 z ${total}: kafelek startowy`;
+    list.innerHTML = '<p class="text-xs text-[#DFEFF6]/80 leading-relaxed">Komputer zaczyna od kafelka, który ma najwięcej pewnych, <strong>obustronnych</strong> dopasowań: on wybiera sąsiada, a sąsiad wybiera jego.</p>';
+    board.showGhost(step.tile, step.slot, 'accepted', 'start');
+    await solverPause(SOLVER_TIMING.seed);
+  } else {
+    $('solver-step-title').textContent = `Krok ${index + 1} z ${total}: szukam kafelka na pole (${describeSlot(step.slot)})`;
+    const winner = step.candidates[0];
+    // Najpierw słabsi kandydaci (od najsłabszego), na końcu zwycięzca.
+    for (const cand of [...step.candidates].reverse()) {
+      if (!alive() || state.solverSkip) break;
+      const pct = Math.round(cand.fit * 100);
+      const accepted = cand.tile === winner.tile;
+      board.showGhost(cand.tile, step.slot, 'trial', `${pct}%?`);
+      const trial = addTrialRow(cand);
+      await solverPause(SOLVER_TIMING.trial);
+      if (!alive()) return;
+      // Wyższy procent może przegrać, jeśli sąsiedzi nie wybrali kandydata nawzajem.
+      const note = !accepted && cand.fit >= winner.fit ? 'sąsiedzi go nie wybrali' : '';
+      trial.verdict(accepted, accepted ? 'pasuje najlepiej' : note);
+      board.updateGhost(accepted ? 'accepted' : 'rejected', `${pct}% ${accepted ? '✓' : '✗'}`);
+      await solverPause(SOLVER_TIMING.verdict);
+    }
+  }
+  if (!alive()) return;
+  board.clearGhost();
+  board.setVisible(step.tile, true);
+  await solverPause(SOLVER_TIMING.place);
+}
+
 /** Liczy rozwiązanie od zera (z pomiarem czasu) i odtwarza animację układania. */
-function runSolver() {
+async function runSolver() {
   clearInterval(state.timer);
   showScreen('solver');
   const run = ++state.solverRun;
+  const alive = () => run === state.solverRun;
+  state.solverSkip = false;
+  state.solverStepFactor = 1;
   const start = performance.now();
   const compat = computeCompatibility(extractEdges(state.loaded.fragment, state.n));
   const result = solvePuzzle(compat);
@@ -499,8 +708,10 @@ function runSolver() {
   $('vs-human-moves').textContent = state.finishedMs !== null ? `${state.moves} ruchów · ułożone` : `${state.moves} ruchów · nie ukończono`;
   $('vs-cpu-time').textContent = totalMs < 1000 ? `${totalMs.toFixed(0)} ms` : `${(totalMs / 1000).toFixed(1)} s`;
   $('vs-cpu-comparisons').textContent = `${formatNumber(compat.comparisons)} porównań krawędzi`;
-  $('solver-status').textContent = 'Komputer dokłada kafelki od najpewniejszych dopasowań… (animacja jest celowo spowolniona)';
+  $('solver-status').textContent = 'Komputer dokłada kafelki jeden po drugim. W każdym kroku przymierza kilku kandydatów, odrzuca słabsze dopasowania i zostawia najlepsze. Pierwsze kroki są spowolnione, potem animacja przyspiesza.';
   $('solver-result').classList.add('hidden');
+  $('solver-step').classList.remove('hidden');
+  $('solver-controls').classList.remove('hidden');
 
   state.solverBoard?.destroy();
   state.solverBoard = new PuzzleBoard($('board-solver'), {
@@ -508,24 +719,31 @@ function runSolver() {
   });
   for (let t = 0; t < count; t++) state.solverBoard.setVisible(t, false);
 
-  const delay = Math.min(220, 4000 / count);
-  result.order.forEach((step, i) => {
-    setTimeout(() => {
-      if (run === state.solverRun) state.solverBoard.setVisible(step.tile, true);
-    }, 300 + i * delay);
-  });
-  setTimeout(() => {
-    if (run !== state.solverRun) return;
-    const wrong = new Set();
-    result.slots.forEach((tile, slot) => { if (tile !== slot) wrong.add(tile); });
-    state.solverBoard.markWrong(wrong);
-    $('solver-status').textContent = `Gotowe. Liczenie zajęło ${totalMs.toFixed(0)} ms, a komputer nie wiedział, jak wygląda cały obraz. Znał tylko piksele na krawędziach.`;
-    $('solver-correct').textContent = `${result.correct} / ${count}`;
-    $('solver-explain').innerHTML = wrong.size === 0
-      ? 'Bezbłędnie! Człowiek widzi „dywan” podobnych komórek, a komputer porównuje setki pikseli na każdej krawędzi i wychwytuje różnice niewidoczne gołym okiem. Ale co, gdy preparat ma <strong>dziesiątki tysięcy</strong> takich kafelków? Zobacz w następnym kroku.'
-      : `Komputer pomylił się przy <strong>${wrong.size}</strong> kafelkach (zaznaczone na czerwono). Przy powtarzalnej tkance wiele krawędzi pasuje prawie tak samo dobrze. Dlatego w prawdziwej analizie nikt nie skleja kafelków: skaner zapisuje położenie każdego z nich, a AI ocenia je osobno.`;
-    $('solver-result').classList.remove('hidden');
-  }, 500 + count * delay);
+  await solverPause(300);
+  for (let i = 0; i < result.order.length; i++) {
+    if (!alive()) return;
+    if (state.solverSkip) break;
+    state.solverStepFactor = i < SOLVER_SLOW_STEPS ? 1 : SOLVER_LATER_FACTOR;
+    await animateSolverStep(result.order[i], i, count, alive);
+  }
+  if (!alive()) return;
+  // Po pominięciu animacji pokazujemy od razu wszystkie kafelki.
+  state.solverBoard.clearGhost();
+  for (let t = 0; t < count; t++) state.solverBoard.setVisible(t, true);
+  await solverPause(400);
+  if (!alive()) return;
+
+  const wrong = new Set();
+  result.slots.forEach((tile, slot) => { if (tile !== slot) wrong.add(tile); });
+  state.solverBoard.markWrong(wrong);
+  $('solver-step').classList.add('hidden');
+  $('solver-controls').classList.add('hidden');
+  $('solver-status').textContent = `Gotowe. Liczenie zajęło ${totalMs.toFixed(0)} ms, a komputer nie wiedział, jak wygląda cały obraz. Znał tylko piksele na krawędziach.`;
+  $('solver-correct').textContent = `${result.correct} / ${count}`;
+  $('solver-explain').innerHTML = wrong.size === 0
+    ? 'Bezbłędnie! Człowiek widzi „dywan” podobnych komórek, a komputer porównuje setki pikseli na każdej krawędzi i wychwytuje różnice niewidoczne gołym okiem. Ale co, gdy preparat ma <strong>dziesiątki tysięcy</strong> takich kafelków? Zobacz w następnym kroku.'
+    : `Komputer pomylił się przy <strong>${wrong.size}</strong> kafelkach (zaznaczone na czerwono). Przy powtarzalnej tkance wiele krawędzi pasuje prawie tak samo dobrze. Dlatego w prawdziwej analizie nikt nie skleja kafelków: skaner zapisuje położenie każdego z nich, a AI ocenia je osobno.`;
+  $('solver-result').classList.remove('hidden');
 }
 
 /* ------------------------------------------------------------------ */
@@ -587,6 +805,12 @@ function restart() {
   });
   $('toggle-correct').checked = false;
   $('toggle-helper').checked = false;
+  $('easy-legend').classList.add('hidden');
+  for (const name of ['warmup', 'tissue']) {
+    $(`toggle-preview-${name}`).checked = false;
+    $(`preview-${name}`).classList.add('hidden');
+  }
+  clearCelebrations();
   ['board-warmup', 'board-tissue', 'board-solver'].forEach((id) => { $(id).innerHTML = ''; });
   showScreen('intro');
 }
@@ -615,7 +839,22 @@ function bindEvents() {
   });
   $('btn-restart').addEventListener('click', restart);
   $('btn-restart-end').addEventListener('click', restart);
-  $('toggle-correct').addEventListener('change', (e) => state.board?.setShowCorrect(e.target.checked));
+  $('toggle-correct').addEventListener('change', (e) => {
+    state.board?.setShowCorrect(e.target.checked);
+    $('easy-legend').classList.toggle('hidden', !e.target.checked);
+  });
+  for (const name of ['warmup', 'tissue']) {
+    $(`toggle-preview-${name}`).addEventListener('change', (e) => {
+      $(`preview-${name}`).classList.toggle('hidden', !e.target.checked);
+    });
+  }
+  document.querySelectorAll('#solver-controls [data-speed]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      state.solverSpeed = Number(chip.dataset.speed);
+      document.querySelectorAll('#solver-controls [data-speed]').forEach((c) => c.classList.toggle('is-active', c === chip));
+    });
+  });
+  $('btn-solver-skip').addEventListener('click', () => { state.solverSkip = true; });
   $('toggle-helper').addEventListener('change', (e) => {
     $('helper-info').classList.toggle('hidden', !e.target.checked);
     updateHelperHints(e.target.checked ? state.board.selected : null);

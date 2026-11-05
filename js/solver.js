@@ -13,6 +13,9 @@
 
 import { neighbourScore } from './vision.js';
 
+/** Ilu najlepszych kandydatów na pole zapamiętujemy w każdym kroku (do animacji). */
+const TRIAL_COUNT = 3;
+
 const DIRECTIONS = [
   { name: 'right', dr: 0, dc: 1 },
   { name: 'left', dr: 0, dc: -1 },
@@ -51,10 +54,11 @@ function bestNeighbours(compat) {
  * Układa puzzle wyłącznie na podstawie kompatybilności krawędzi.
  *
  * @param {object} compat - Wynik computeCompatibility (zawiera n i count).
- * @returns {{slots: Int32Array, order: Array<{tile: number, slot: number}>, correct: number,
- *   correctNeighbours: number, totalNeighbours: number, ms: number}}
- *   slots[pole] = kafelek, kolejność układania (do animacji), liczba kafelków na właściwym
- *   miejscu, liczba poprawnych par sąsiadów i czas obliczeń.
+ * @returns {{slots: Int32Array, order: Array<{tile: number, slot: number, candidates: object[]}>,
+ *   correct: number, correctNeighbours: number, totalNeighbours: number, ms: number}}
+ *   slots[pole] = kafelek; kolejność układania (do animacji) – dla każdego kroku także
+ *   najlepsi kandydaci na to pole (pierwszy z nich został wybrany, patrz evaluateCandidate);
+ *   liczba kafelków na właściwym miejscu, liczba poprawnych par sąsiadów i czas obliczeń.
  */
 export function solvePuzzle(compat) {
   const start = performance.now();
@@ -81,10 +85,31 @@ export function solvePuzzle(compat) {
     }
   }
 
+  /**
+   * Ocenia kandydata na wolne pole względem już ułożonych sąsiadów tego pola.
+   *
+   * @param {number} cand - Kafelek-kandydat.
+   * @param {Array<{tile: number, dir: string}>} neighbours - Ułożeni sąsiedzi pola i ich kierunek.
+   * @returns {{tile: number, score: number, fit: number, buddies: number, neighbours: number}}
+   *   score – wynik używany do wyboru (pierwszeństwo mają obustronne dopasowania),
+   *   fit – średnia kompatybilność krawędzi (0–1), buddies – liczba obustronnych dopasowań.
+   */
+  const evaluateCandidate = (cand, neighbours) => {
+    let sum = 0;
+    let buddies = 0;
+    for (const nb of neighbours) {
+      sum += neighbourScore(compat, cand, nb.tile, nb.dir);
+      if (isBuddy(cand, nb.tile, nb.dir)) buddies++;
+    }
+    const allBuddies = buddies === neighbours.length ? 1 : 0;
+    const fit = sum / neighbours.length;
+    return { tile: cand, score: allBuddies * 10 + buddies + fit, fit, buddies, neighbours: neighbours.length };
+  };
+
   const grid = new Map();
   const key = (r, c) => `${r},${c}`;
   const used = new Uint8Array(count);
-  const placed = [{ tile: seed, r: 0, c: 0 }];
+  const placed = [{ tile: seed, r: 0, c: 0, candidates: [] }];
   grid.set(key(0, 0), seed);
   used[seed] = 1;
   const bounds = { minR: 0, maxR: 0, minC: 0, maxC: 0 };
@@ -108,23 +133,21 @@ export function solvePuzzle(compat) {
           const t = grid.get(key(r + nd.dr, c + nd.dc));
           if (t !== undefined) neighbours.push({ tile: t, dir: nd.name });
         }
+        const ranked = [];
         for (let cand = 0; cand < count; cand++) {
           if (used[cand]) continue;
-          let sum = 0;
-          let buddies = 0;
-          for (const nb of neighbours) {
-            sum += neighbourScore(compat, cand, nb.tile, nb.dir);
-            if (isBuddy(cand, nb.tile, nb.dir)) buddies++;
-          }
-          const allBuddies = buddies === neighbours.length ? 1 : 0;
-          const score = allBuddies * 10 + buddies + sum / neighbours.length;
-          if (!bestMove || score > bestMove.score) bestMove = { score, tile: cand, r, c };
+          ranked.push(evaluateCandidate(cand, neighbours));
+        }
+        // Sortowanie jest stabilne, więc przy remisie wygrywa kafelek o niższym indeksie.
+        ranked.sort((a, b) => b.score - a.score);
+        if (!bestMove || ranked[0].score > bestMove.score) {
+          bestMove = { score: ranked[0].score, tile: ranked[0].tile, r, c, candidates: ranked.slice(0, TRIAL_COUNT) };
         }
       }
     }
     grid.set(key(bestMove.r, bestMove.c), bestMove.tile);
     used[bestMove.tile] = 1;
-    placed.push({ tile: bestMove.tile, r: bestMove.r, c: bestMove.c });
+    placed.push({ tile: bestMove.tile, r: bestMove.r, c: bestMove.c, candidates: bestMove.candidates });
     bounds.minR = Math.min(bounds.minR, bestMove.r);
     bounds.maxR = Math.max(bounds.maxR, bestMove.r);
     bounds.minC = Math.min(bounds.minC, bestMove.c);
@@ -135,7 +158,7 @@ export function solvePuzzle(compat) {
   const order = placed.map((p) => {
     const slot = (p.r - bounds.minR) * n + (p.c - bounds.minC);
     slots[slot] = p.tile;
-    return { tile: p.tile, slot };
+    return { tile: p.tile, slot, candidates: p.candidates };
   });
   const ms = performance.now() - start;
   return { slots, order, ms, ...scoreArrangement(slots, n) };

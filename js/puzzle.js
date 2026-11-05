@@ -39,7 +39,7 @@ export class PuzzleBoard {
    * @param {number[]} [options.slots] - Początkowe ułożenie; domyślnie poprawne.
    * @param {boolean} [options.interactive=true] - Czy gracz może zamieniać kafelki.
    * @param {(slots: number[]) => void} [options.onMove] - Wywoływane po każdej zamianie.
-   * @param {() => void} [options.onSolved] - Wywoływane po ułożeniu całego obrazu.
+   * @param {() => void} [options.onSolved] - Wywoływane po ułożeniu całego obrazu (po ruchu gracza).
    * @param {(tile: number | null) => void} [options.onSelect] - Wywoływane po zaznaczeniu kafelka.
    */
   constructor(container, { image, n, slots, interactive = true, onMove, onSolved, onSelect }) {
@@ -54,21 +54,16 @@ export class PuzzleBoard {
     this.showCorrect = false;
     this.drag = null;
 
+    this.ghost = null;
+
     container.innerHTML = '';
     container.classList.add('puzzle-board');
+    container.classList.remove('is-solved');
     container.style.setProperty('--n', n);
-    const url = image.toDataURL('image/jpeg', 0.92);
+    this.url = image.toDataURL('image/jpeg', 0.92);
     this.tiles = Array.from({ length: n * n }, (_, tile) => {
-      const el = document.createElement('div');
-      el.className = 'puzzle-tile';
+      const el = this.createTileElement(tile);
       el.dataset.tile = String(tile);
-      el.style.backgroundImage = `url(${url})`;
-      el.style.backgroundSize = `${n * 100}% ${n * 100}%`;
-      const pct = n > 1 ? 100 / (n - 1) : 0;
-      el.style.backgroundPosition = `${(tile % n) * pct}% ${Math.floor(tile / n) * pct}%`;
-      const badge = document.createElement('span');
-      badge.className = 'tile-badge';
-      el.appendChild(badge);
       container.appendChild(el);
       return el;
     });
@@ -80,15 +75,67 @@ export class PuzzleBoard {
     this.render();
   }
 
+  /**
+   * Tworzy element kafelka z wyciętym fragmentem obrazu i pustą etykietą.
+   *
+   * @param {number} tile - Indeks kafelka (jego miejsce w poprawnym ułożeniu).
+   * @returns {HTMLDivElement} Element kafelka (jeszcze niepodpięty do planszy).
+   */
+  createTileElement(tile) {
+    const { n } = this;
+    const el = document.createElement('div');
+    el.className = 'puzzle-tile';
+    el.style.backgroundImage = `url(${this.url})`;
+    el.style.backgroundSize = `${n * 100}% ${n * 100}%`;
+    const pct = n > 1 ? 100 / (n - 1) : 0;
+    el.style.backgroundPosition = `${(tile % n) * pct}% ${Math.floor(tile / n) * pct}%`;
+    const badge = document.createElement('span');
+    badge.className = 'tile-badge';
+    el.appendChild(badge);
+    return el;
+  }
+
+  /**
+   * Ustawia element w miejscu wskazanego pola planszy.
+   *
+   * @param {HTMLElement} el - Element kafelka.
+   * @param {number} slot - Indeks pola.
+   */
+  placeAt(el, slot) {
+    el.style.left = `${(slot % this.n) * 100 / this.n}%`;
+    el.style.top = `${Math.floor(slot / this.n) * 100 / this.n}%`;
+  }
+
   /** Ustawia pozycje wszystkich kafelków zgodnie z bieżącym ułożeniem. */
   render() {
+    const paired = this.showCorrect ? this.tilesWithCorrectNeighbour() : new Set();
     this.slots.forEach((tile, slot) => {
       const el = this.tiles[tile];
-      el.style.left = `${(slot % this.n) * 100 / this.n}%`;
-      el.style.top = `${Math.floor(slot / this.n) * 100 / this.n}%`;
-      el.classList.toggle('is-correct', this.showCorrect && tile === slot);
+      this.placeAt(el, slot);
+      const correct = this.showCorrect && tile === slot;
+      el.classList.toggle('is-correct', correct);
+      el.classList.toggle('is-paired', !correct && paired.has(tile));
       el.classList.toggle('is-selected', tile === this.selected);
     });
+    this.container.classList.toggle('is-solved', this.interactive && this.isSolved());
+  }
+
+  /**
+   * Znajduje kafelki, które stykają się z właściwym sąsiadem (tym samym, co w oryginale,
+   * i z tej samej strony), niezależnie od tego, czy cała para leży na swoim miejscu.
+   *
+   * @returns {Set<number>} Indeksy kafelków mających co najmniej jednego poprawnego sąsiada.
+   */
+  tilesWithCorrectNeighbour() {
+    const { n, slots } = this;
+    const result = new Set();
+    slots.forEach((tile, slot) => {
+      const rightOk = slot % n < n - 1 && tile % n < n - 1 && slots[slot + 1] === tile + 1;
+      const downOk = slot + n < n * n && slots[slot + n] === tile + n;
+      if (rightOk) { result.add(tile); result.add(tile + 1); }
+      if (downOk) { result.add(tile); result.add(tile + n); }
+    });
+    return result;
   }
 
   /**
@@ -107,7 +154,8 @@ export class PuzzleBoard {
   }
 
   /**
-   * Włącza lub wyłącza zielone obramowanie poprawnie leżących kafelków.
+   * Włącza lub wyłącza tryb łatwy: zielone obramowanie kafelków na swoim miejscu
+   * i żółte obramowanie par poprawnych sąsiadów leżących w złym miejscu.
    *
    * @param {boolean} value - Czy pokazywać poprawne kafelki.
    */
@@ -137,6 +185,45 @@ export class PuzzleBoard {
    */
   setVisible(tile, visible) {
     this.tiles[tile].classList.toggle('is-hidden', !visible);
+  }
+
+  /**
+   * Pokazuje „przymierzany” kafelek na wskazanym polu (animacja solvera).
+   *
+   * Każde wywołanie tworzy nowy element, dzięki czemu animacja pojawienia się startuje od nowa.
+   *
+   * @param {number} tile - Kafelek, który komputer sprawdza.
+   * @param {number} slot - Pole, na które go przymierza.
+   * @param {'trial' | 'rejected' | 'accepted'} status - Etap oceny (kolor obramowania).
+   * @param {string} label - Tekst etykiety, np. „87% ✓”.
+   */
+  showGhost(tile, slot, status, label) {
+    this.clearGhost();
+    const el = this.createTileElement(tile);
+    el.classList.add('puzzle-ghost', `is-${status}`);
+    el.querySelector('.tile-badge').textContent = label;
+    this.placeAt(el, slot);
+    this.container.appendChild(el);
+    this.ghost = el;
+  }
+
+  /**
+   * Zmienia stan i etykietę bieżącego „przymierzanego” kafelka.
+   *
+   * @param {'trial' | 'rejected' | 'accepted'} status - Nowy etap oceny.
+   * @param {string} label - Nowy tekst etykiety.
+   */
+  updateGhost(status, label) {
+    if (!this.ghost) return;
+    this.ghost.classList.remove('is-trial', 'is-rejected', 'is-accepted');
+    this.ghost.classList.add(`is-${status}`);
+    this.ghost.querySelector('.tile-badge').textContent = label;
+  }
+
+  /** Usuwa „przymierzany” kafelek z planszy. */
+  clearGhost() {
+    this.ghost?.remove();
+    this.ghost = null;
   }
 
   /**

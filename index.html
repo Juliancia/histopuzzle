@@ -74,7 +74,13 @@
     <!-- AKT 0: ROZGRZEWKA -->
     <section id="screen-warmup" class="screen hidden">
       <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
-        <div class="board-wrap"><div id="board-warmup"></div></div>
+        <div class="board-wrap">
+          <div id="board-warmup"></div>
+          <figure id="preview-warmup" class="board-preview hidden">
+            <canvas width="240" height="240"></canvas>
+            <figcaption>Tak wygląda ułożony obrazek</figcaption>
+          </figure>
+        </div>
         <aside class="glass-panel p-5 space-y-4">
           <div class="pill"><i data-lucide="flame" class="w-3.5 h-3.5"></i> Akt 0 · Rozgrzewka</div>
           <h2 class="text-xl font-extrabold text-white">Najpierw coś łatwego</h2>
@@ -83,6 +89,7 @@
             <div class="stat"><span>Czas</span><strong id="warmup-time">0:00</strong></div>
             <div class="stat"><span>Ruchy</span><strong id="warmup-moves">0</strong></div>
           </div>
+          <label class="toggle"><input type="checkbox" id="toggle-preview-warmup"><span>Podejrzyj oryginalny obrazek</span></label>
           <div id="warmup-done" class="success-box hidden">
             <strong>Brawo!</strong> Udało się w <span id="warmup-result"></span>. Układanie jest łatwe… prawda?
           </div>
@@ -105,7 +112,13 @@
     <!-- AKT 1B: UKŁADANIE -->
     <section id="screen-puzzle" class="screen hidden">
       <div class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
-        <div class="board-wrap"><div id="board-tissue"></div></div>
+        <div class="board-wrap">
+          <div id="board-tissue"></div>
+          <figure id="preview-tissue" class="board-preview hidden">
+            <canvas width="240" height="240"></canvas>
+            <figcaption>Tak wygląda ułożony obrazek</figcaption>
+          </figure>
+        </div>
         <aside class="glass-panel p-5 space-y-4">
           <div class="pill"><i data-lucide="layers" class="w-3.5 h-3.5"></i> Akt 1 · Ułóż tkankę</div>
           <div>
@@ -116,7 +129,12 @@
             <div class="stat"><span>Czas</span><strong id="puzzle-time">0:00</strong></div>
             <div class="stat"><span>Ruchy</span><strong id="puzzle-moves">0</strong></div>
           </div>
-          <label class="toggle"><input type="checkbox" id="toggle-correct"><span>Tryb łatwy: pokaż poprawnie leżące kafelki</span></label>
+          <label class="toggle"><input type="checkbox" id="toggle-preview-tissue"><span>Podejrzyj oryginalny obrazek</span></label>
+          <label class="toggle"><input type="checkbox" id="toggle-correct"><span>Tryb łatwy: pokaż dobrze ułożone kafelki</span></label>
+          <div id="easy-legend" class="easy-legend hidden">
+            <span><i class="swatch swatch-ok"></i>na swoim miejscu</span>
+            <span><i class="swatch swatch-pair"></i>dobrze pasuje do sąsiada, ale cała para leży w złym miejscu</span>
+          </div>
           <label id="helper-row" class="toggle hidden"><input type="checkbox" id="toggle-helper"><span>Pomocnik komputerowy</span></label>
           <p id="helper-info" class="hidden info-box">Tapnij kafelek, a pomocnik oznaczy strzałkami kafelki, które według niego pasują <strong>→ z prawej, ← z lewej, ↓ pod spodem, ↑ nad nim</strong>. Liczba to pewność komputera.</p>
           <div id="puzzle-done" class="success-box hidden"><strong>Niesamowite!</strong> Ułożone w <span id="puzzle-result"></span>. Mało kto daje radę!</div>
@@ -146,6 +164,8 @@
               <div class="font-mono text-sm space-y-0.5" id="pixel-values"></div>
             </div>
           </div>
+          <p class="text-sm text-[#DFEFF6]/85">Kolorowy obraz to tak naprawdę <strong>trzy macierze liczb</strong> nałożone na siebie. Oto fragment 5×5 pikseli z białej ramki, rozłożony na kanały:</p>
+          <div id="rgb-matrices" class="grid grid-cols-3 gap-2"></div>
         </div>
 
         <div class="glass-panel p-5 space-y-3">
@@ -156,6 +176,23 @@
             <figure><canvas id="stain-h" class="stain-canvas"></canvas><figcaption>Tylko hematoksylina<br>(jądra)</figcaption></figure>
             <figure><canvas id="stain-e" class="stain-canvas"></canvas><figcaption>Tylko eozyna<br>(cytoplazma, kolagen)</figcaption></figure>
           </div>
+          <details class="stain-info" open>
+            <summary>Po co barwi się tkankę i co oglądamy w każdym barwniku?</summary>
+            <div class="space-y-2.5 mt-2">
+              <p>Skrawek tkanki ma ok. 4 µm grubości i pod mikroskopem jest <strong>prawie przezroczysty</strong>. Bez barwienia nie widać, gdzie kończy się jedna komórka, a zaczyna druga. H&amp;E to najczęstsze barwienie na świecie: dwa barwniki przyczepiają się do różnych części komórki.</p>
+              <div class="stain-row">
+                <span class="dot" style="background:#4b2f8f"></span>
+                <div><strong>Hematoksylina</strong> (zasadowa) wiąże się z kwasami nukleinowymi (DNA, RNA), więc barwi <strong>jądra komórkowe</strong> na granatowo-fioletowo.
+                  <em>Patolog sprawdza:</em> ile jest jąder (gęstość komórek), ich wielkość i kształt, czy są nieregularne i ciemne (typowe dla nowotworu), oraz czy widać podziały komórek (mitozy).</div>
+              </div>
+              <div class="stain-row">
+                <span class="dot" style="background:#e48fb3"></span>
+                <div><strong>Eozyna</strong> (kwaśna) wiąże się z białkami, więc barwi <strong>cytoplazmę, kolagen, mięśnie i krwinki czerwone</strong> na różowo.
+                  <em>Patolog sprawdza:</em> ile jest cytoplazmy wokół jądra, jak ułożone są włókna tkanki łącznej (np. zwłóknienie), oraz obszary martwicy, które są jednolicie różowe, bez jąder.</div>
+              </div>
+              <p><strong>Po co to komputerowi?</strong> Na obrazie „tylko hematoksylina” łatwo policzyć i zmierzyć jądra. Rozdzielenie barwników pozwala też wyrównać kolory między laboratoriami, bo każde barwi trochę mocniej lub słabiej. Bez tego model AI mógłby się uczyć odcienia różu zamiast budowy tkanki.</p>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -171,7 +208,7 @@
               <button data-dir="left" class="chip">← z lewej</button>
               <button data-dir="up" class="chip">↑ nad nim</button>
             </div>
-            <p class="text-xs text-[#DFEFF6]/60">Kolor na planszy: jak bardzo każdy kafelek pasuje według komputera (czerwony = najlepiej).</p>
+            <p class="text-xs text-[#DFEFF6]/60">Kolor na planszy: jak bardzo każdy kafelek pasuje według komputera (im mocniejszy fiolet, tym lepiej). Procenty widać na 4 najlepszych kandydatach.</p>
           </div>
           <div class="space-y-2">
             <div id="candidate-list" class="space-y-2"></div>
@@ -198,6 +235,17 @@
             <div><span>Komputer</span><strong id="vs-cpu-time">–</strong><em id="vs-cpu-comparisons"></em></div>
           </div>
           <p id="solver-status" class="text-sm text-[#DFEFF6]/90 leading-relaxed"></p>
+          <div id="solver-controls" class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-[#DFEFF6]/60 mr-1">Tempo:</span>
+            <button data-speed="1" class="chip is-active">Wolno</button>
+            <button data-speed="3" class="chip">Szybko</button>
+            <button id="btn-solver-skip" class="chip">Pomiń animację ⏭</button>
+          </div>
+          <div id="solver-step" class="solver-step hidden">
+            <div id="solver-step-title" class="text-sm font-bold text-white"></div>
+            <div id="solver-step-list" class="space-y-1.5"></div>
+            <p class="text-[11px] text-[#DFEFF6]/60 leading-snug">Procent = jak dobrze krawędzie kandydata pasują do już ułożonych sąsiadów tego pola (średnia). Komputer przymierza najlepszych kandydatów i zostawia zwycięzcę.</p>
+          </div>
           <div id="solver-result" class="hidden space-y-3">
             <div class="stat"><span>Kafelki na właściwym miejscu</span><strong id="solver-correct"></strong></div>
             <p id="solver-explain" class="info-box"></p>
